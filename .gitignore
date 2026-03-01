@@ -1,0 +1,39 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# ── 가상환경 ──
+.venv/
+venv/
+env/
+ENV/
+
+# ── 환경변수 (민감 정보 포함) ──
+.env
+.env.local
+.env.*.local
+
+# ── IDE ──
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── 로그 ──
+*.log
+logs/
+
+# ── Claude Code ──
+.claude/
