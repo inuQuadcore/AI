@@ -2,7 +2,7 @@ services:
   translation-api:
     image: ghcr.io/YOUR_GITHUB_USERNAME/everybuddy-ai:latest
     ports:
-      - "55186:8000"
+      - "8000:8000"
     env_file:
       - .env
     restart: unless-stopped
