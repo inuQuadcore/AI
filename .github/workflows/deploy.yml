@@ -1,0 +1,74 @@
+name: Deploy to GPU Server
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/everybuddy-ai
+
+jobs:
+  # ── 1단계: 이미지 빌드 & GHCR push ──
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: 소스코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: GHCR 로그인
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Docker 이미지 빌드 & Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:latest
+
+  # ── 2단계: GPU 서버에 배포 ──
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build   # build 완료 후 실행
+
+    steps:
+      - name: GPU 서버 배포 (Bastion 경유)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          # ── 실제 서버 (laurel) ──
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+          # ── Bastion 서버 (almond) ──
+          proxy_host: ${{ secrets.BASTION_HOST }}
+          proxy_port: ${{ secrets.BASTION_PORT }}
+          proxy_username: ${{ secrets.BASTION_USER }}
+          proxy_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+          # ── 배포 스크립트 ──
+          envs: IMAGE_NAME
+          script: |
+            # GHCR 로그인
+            echo ${{ secrets.GHCR_TOKEN }} | docker login ghcr.io -u ${{ secrets.SERVER_USER }} --password-stdin
+
+            # 새 이미지 pull
+            docker pull $IMAGE_NAME:latest
+
+            # 컨테이너 재시작
+            cd ~/hdd
+            docker-compose up -d
+
+            # 사용하지 않는 이미지 정리
+            docker image prune -f
+
+            echo "✅ Deploy complete: $(date)"

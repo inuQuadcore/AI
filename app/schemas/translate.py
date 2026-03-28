@@ -26,14 +26,14 @@ class TextTranslateRequest(BaseModel):
         description="번역할 원문 텍스트",
         examples=["Hello, how are you?"],
     )
-    source_lang: str = Field(
+    source_language: str = Field(
         ...,
         min_length=2,
         max_length=5,
         description="원문 언어 코드 (ISO 639-1)",
         examples=["en"],
     )
-    target_lang: str = Field(
+    target_language: str = Field(
         ...,
         min_length=2,
         max_length=5,

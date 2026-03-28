@@ -9,11 +9,24 @@ API 문서:
   ReDoc:      http://localhost:8000/redoc
 """
 
+import logging
+import logging_loki
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api.v1.translate import router as translate_router
+
+
+# ── Loki 로깅 설정 ──
+if settings.LOKI_URL:
+    loki_handler = logging_loki.LokiHandler(
+        url=settings.LOKI_URL + "/loki/api/v1/push",
+        tags={"service": "fastapi", "environment": settings.APP_ENV},
+        version="1",
+    )
+    logging.getLogger().addHandler(loki_handler)
 
 
 # ── FastAPI 앱 생성 ──
@@ -27,8 +40,8 @@ app = FastAPI(
 AI 모델(S2TT, T2TT)을 래핑하여 텍스트/음성 번역 기능을 제공합니다.
 
 ### 엔드포인트
-- **POST /api/v1/translate/text** — 텍스트 번역 (T2TT)
-- **POST /api/v1/translate/speech** — 음성 번역 (S2TT)
+- **POST /translate/text** — 텍스트 번역 (T2TT)
+- **POST /translate/speech** — 음성 번역 (S2TT)
 
 ### 시나리오별 사용법
 | 시나리오 | 엔드포인트 | 비고 |
@@ -56,7 +69,7 @@ app.add_middleware(
 
 
 # ── 라우터 등록 ──
-app.include_router(translate_router, prefix="/api/v1")
+app.include_router(translate_router)
 
 
 # ── 헬스체크 ──
@@ -70,8 +83,4 @@ async def health_check():
     서버가 정상 동작 중인지 확인하는 엔드포인트.
     로드밸런서, 모니터링 도구에서 사용.
     """
-    return {
-        "status": "healthy",
-        "version": settings.APP_VERSION,
-        "mock_mode": settings.USE_MOCK,
-    }
+    return {"status": "ok"}

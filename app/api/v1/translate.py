@@ -63,8 +63,8 @@ async def text_translate(request: TextTranslateRequest):
     """
     translated = await translate_text(
         text=request.text,
-        source_lang=request.source_lang,
-        target_lang=request.target_lang,
+        source_language=request.source_language,
+        target_language=request.target_language,
     )
     return TextTranslateResponse(translated_text=translated)
 
@@ -99,15 +99,15 @@ async def text_translate(request: TextTranslateRequest):
     },
 )
 async def speech_translate(
-    file: UploadFile = File(
+    audio: UploadFile = File(
         ...,
         description="음성 파일 (wav, mp3, ogg, webm, m4a)",
     ),
-    source_lang: str = Form(
+    source_language: str = Form(
         ...,
         description="음성의 원본 언어 코드 (예: en)",
     ),
-    target_lang: str = Form(
+    target_language: str = Form(
         ...,
         description="번역 대상 언어 코드 (예: ko)",
     ),
@@ -126,20 +126,20 @@ async def speech_translate(
     """
 
     # ── 파일 형식 검증 ──
-    if file.content_type not in settings.ALLOWED_AUDIO_TYPES:
+    if audio.content_type not in settings.ALLOWED_AUDIO_TYPES:
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "invalid_audio_format",
                 "message": (
-                    f"지원하지 않는 오디오 형식: {file.content_type}. "
+                    f"지원하지 않는 오디오 형식: {audio.content_type}. "
                     f"지원 형식: {settings.ALLOWED_AUDIO_TYPES}"
                 ),
             },
         )
 
     # ── 파일 읽기 + 크기 검증 ──
-    audio_bytes = await file.read()
+    audio_bytes = await audio.read()
     max_size = settings.MAX_AUDIO_SIZE_MB * 1024 * 1024  # MB → bytes
 
     if len(audio_bytes) > max_size:
@@ -154,8 +154,8 @@ async def speech_translate(
     # ── S2TT 모델 호출 ──
     result = await translate_speech(
         audio_bytes=audio_bytes,
-        source_lang=source_lang,
-        target_lang=target_lang,
+        source_language=source_language,
+        target_language=target_language,
     )
 
     return SpeechTranslateResponse(

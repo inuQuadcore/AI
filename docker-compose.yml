@@ -1,8 +1,15 @@
 services:
   translation-api:
-    build: .
+    image: ghcr.io/YOUR_GITHUB_USERNAME/everybuddy-ai:latest
     ports:
-      - "8000:8000"
+      - "55186:8000"
     env_file:
       - .env
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

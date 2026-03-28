@@ -23,26 +23,26 @@ from app.models.mock import mock_t2tt, mock_s2tt
 # 헬퍼: 언어 코드 검증
 # ══════════════════════════════════════════════
 
-def _validate_languages(source_lang: str, target_lang: str) -> None:
+def _validate_languages(source_language: str, target_language: str) -> None:
     """
     지원 언어 목록에 있는지 검증.
     지원하지 않는 언어 코드가 오면 400 에러.
     """
-    if source_lang not in settings.SUPPORTED_LANGUAGES:
+    if source_language not in settings.SUPPORTED_LANGUAGES:
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "unsupported_language",
-                "message": f"지원하지 않는 소스 언어: {source_lang}. "
+                "message": f"지원하지 않는 소스 언어: {source_language}. "
                            f"지원 언어: {settings.SUPPORTED_LANGUAGES}",
             },
         )
-    if target_lang not in settings.SUPPORTED_LANGUAGES:
+    if target_language not in settings.SUPPORTED_LANGUAGES:
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "unsupported_language",
-                "message": f"지원하지 않는 타겟 언어: {target_lang}. "
+                "message": f"지원하지 않는 타겟 언어: {target_language}. "
                            f"지원 언어: {settings.SUPPORTED_LANGUAGES}",
             },
         )
@@ -54,8 +54,8 @@ def _validate_languages(source_lang: str, target_lang: str) -> None:
 
 async def _call_t2tt_model(
     text: str,
-    source_lang: str,
-    target_lang: str,
+    source_language: str,
+    target_language: str,
 ) -> str:
     """
     실제 T2TT 모델 서버 호출
@@ -63,16 +63,16 @@ async def _call_t2tt_model(
     모델 서버가 올라가면 이 함수 내부만 수정.
     예상 모델 서버 API:
       POST {T2TT_MODEL_URL}
-      Body: { "text": "...", "source_lang": "...", "target_lang": "..." }
+      Body: { "text": "...", "source_language": "...", "target_language": "..." }
       Response: { "translated_text": "..." }
     """
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=settings.REQUEST_TIMEOUT) as client:
         response = await client.post(
             settings.T2TT_MODEL_URL,
             json={
                 "text": text,
-                "source_lang": source_lang,
-                "target_lang": target_lang,
+                "source_language": source_language,
+                "target_language": target_language,
             },
         )
         response.raise_for_status()
@@ -82,8 +82,8 @@ async def _call_t2tt_model(
 
 async def translate_text(
     text: str,
-    source_lang: str,
-    target_lang: str,
+    source_language: str,
+    target_language: str,
 ) -> str:
     """
     텍스트 번역 서비스 함수
@@ -93,8 +93,8 @@ async def translate_text(
 
     Args:
         text: 번역할 원문 텍스트
-        source_lang: 원문 언어 코드
-        target_lang: 번역 대상 언어 코드
+        source_language: 원문 언어 코드
+        target_language: 번역 대상 언어 코드
 
     Returns:
         번역된 텍스트
@@ -105,19 +105,19 @@ async def translate_text(
         HTTPException 504: 모델 서버 타임아웃
     """
     # 1) 언어 코드 검증
-    _validate_languages(source_lang, target_lang)
+    _validate_languages(source_language, target_language)
 
     # 2) 같은 언어면 원문 그대로 반환 (불필요한 모델 호출 방지)
-    if source_lang == target_lang:
+    if source_language == target_language:
         return text
 
     # 3) Mock / 실제 모델 분기
     if settings.USE_MOCK:
-        return await mock_t2tt(text, source_lang, target_lang)
+        return await mock_t2tt(text, source_language, target_language)
 
     # 4) 실제 모델 서버 호출 + 에러 처리
     try:
-        return await _call_t2tt_model(text, source_lang, target_lang)
+        return await _call_t2tt_model(text, source_language, target_language)
     except httpx.TimeoutException:
         raise HTTPException(
             status_code=504,
@@ -150,8 +150,8 @@ async def translate_text(
 
 async def _call_s2tt_model(
     audio_bytes: bytes,
-    source_lang: str,
-    target_lang: str,
+    source_language: str,
+    target_language: str,
 ) -> dict[str, str]:
     """
     실제 S2TT 모델 서버 호출
@@ -159,16 +159,16 @@ async def _call_s2tt_model(
     모델 서버가 올라가면 이 함수 내부만 수정.
     예상 모델 서버 API:
       POST {S2TT_MODEL_URL}
-      Body: multipart/form-data (file, source_lang, target_lang)
+      Body: multipart/form-data (audio, source_language, target_language)
       Response: { "original_text": "...", "translated_text": "..." }
     """
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=settings.REQUEST_TIMEOUT) as client:
         response = await client.post(
             settings.S2TT_MODEL_URL,
-            files={"file": ("audio.wav", audio_bytes)},
+            files={"audio": ("audio.wav", audio_bytes)},
             data={
-                "source_lang": source_lang,
-                "target_lang": target_lang,
+                "source_language": source_language,
+                "target_language": target_language,
             },
         )
         response.raise_for_status()
@@ -177,8 +177,8 @@ async def _call_s2tt_model(
 
 async def translate_speech(
     audio_bytes: bytes,
-    source_lang: str,
-    target_lang: str,
+    source_language: str,
+    target_language: str,
 ) -> dict[str, str]:
     """
     음성 번역 서비스 함수
@@ -192,8 +192,8 @@ async def translate_speech(
 
     Args:
         audio_bytes: 음성 파일 바이너리
-        source_lang: 음성의 원본 언어 코드
-        target_lang: 번역 대상 언어 코드
+        source_language: 음성의 원본 언어 코드
+        target_language: 번역 대상 언어 코드
 
     Returns:
         {
@@ -207,15 +207,15 @@ async def translate_speech(
         HTTPException 504: 모델 서버 타임아웃
     """
     # 1) 언어 코드 검증
-    _validate_languages(source_lang, target_lang)
+    _validate_languages(source_language, target_language)
 
     # 2) Mock / 실제 모델 분기
     if settings.USE_MOCK:
-        return await mock_s2tt(audio_bytes, source_lang, target_lang)
+        return await mock_s2tt(audio_bytes, source_language, target_language)
 
     # 3) 실제 모델 서버 호출 + 에러 처리
     try:
-        return await _call_s2tt_model(audio_bytes, source_lang, target_lang)
+        return await _call_s2tt_model(audio_bytes, source_language, target_language)
     except httpx.TimeoutException:
         raise HTTPException(
             status_code=504,
