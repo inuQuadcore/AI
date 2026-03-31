@@ -1,6 +1,6 @@
 services:
   translation-api:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/everybuddy-ai:latest
+    image: ${DOCKERHUB_USERNAME}/everybuddy-ai:latest
     ports:
       - "8000:8000"
     env_file:
