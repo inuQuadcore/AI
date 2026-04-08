@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     ]
 
     # ── 음성 파일 설정 ──
-    MAX_AUDIO_SIZE_MB: int = 50  # 최대 업로드 크기 (MB)
+    MAX_AUDIO_SIZE_MB: int = 10  # 최대 업로드 크기 (MB) — Spring Boot multipart 제한 기준
     ALLOWED_AUDIO_TYPES: list[str] = [
         "audio/wav",
         "audio/mpeg",       # mp3
@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     ]
 
     # ── 타임아웃 설정 ──
-    REQUEST_TIMEOUT: int = 120  # 모델 추론 타임아웃 (초)
+    REQUEST_TIMEOUT: int = 55   # 모델 추론 타임아웃 (초) — ALB idle timeout 60초 기준
 
     # ── 로깅 (Loki) ──
     LOKI_URL: str = ""          # Loki 주소 (.env에서 지정, 비어있으면 비활성화)
