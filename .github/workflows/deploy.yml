@@ -5,37 +5,14 @@ on:
     branches:
       - main
 
-env:
-  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/everybuddy-ai
-
 jobs:
-  # ── 1단계: 이미지 빌드 & Docker Hub push ──
-  build:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: 소스코드 체크아웃
         uses: actions/checkout@v4
 
-      - name: Docker Hub 로그인
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Docker 이미지 빌드 & Push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ env.IMAGE_NAME }}:latest
-
-  # ── 2단계: GPU 서버에 배포 ──
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-
-    steps:
       - name: GPU 서버 배포 (Bastion 경유)
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -51,16 +28,24 @@ jobs:
           proxy_username: ${{ secrets.BASTION_USER }}
           proxy_key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-          # ── 배포 스크립트 ──
-          envs: IMAGE_NAME
           script: |
-            echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-
-            docker pull $IMAGE_NAME:latest
-
+            # model_repository 동기화
             cd ~/hdd
-            docker-compose up -d
+            git -C capston/AI pull origin main
+
+            # Triton 이미지 pull & 재시작
+            docker pull nvcr.io/nvidia/tritonserver:24.12-py3
+            docker-compose up -d --force-recreate triton
+
+            # 헬스체크 (최대 120초 대기)
+            echo "Triton 기동 대기 중..."
+            for i in $(seq 1 24); do
+              if curl -sf http://localhost:8000/v2/health/ready; then
+                echo "✅ Triton READY: $(date)"
+                break
+              fi
+              echo "  대기 중... ($((i * 5))s)"
+              sleep 5
+            done
 
             docker image prune -f
-
-            echo "✅ Deploy complete: $(date)"

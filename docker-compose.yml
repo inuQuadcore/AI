@@ -1,10 +1,45 @@
 services:
-  translation-api:
-    image: ${DOCKERHUB_USERNAME}/everybuddy-ai:latest
+  triton:
+    image: nvcr.io/nvidia/tritonserver:24.12-py3
     ports:
-      - "8000:8000"
+      - "8000:8000"   # HTTP inference (KServe v2)
+      - "8001:8001"   # gRPC inference
+      - "8002:8002"   # metrics
+    volumes:
+      - ${MODEL_REPO_PATH}:/models_repo
+      - ${MODEL_PATH}:/models
     env_file:
       - .env
+    command: >
+      tritonserver
+      --model-repository=/models_repo
+      --backend-config=python,shm-default-byte-size=16777216
+      --log-verbose=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    ports:
+      - "9100:9100"
+    restart: unless-stopped
+
+  dcgm-exporter:
+    image: nvcr.io/nvidia/k8s/dcgm-exporter:latest
+    ports:
+      - "9400:9400"
     restart: unless-stopped
     deploy:
       resources:
