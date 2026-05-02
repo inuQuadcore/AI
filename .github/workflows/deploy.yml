@@ -13,25 +13,34 @@ jobs:
       - name: 소스코드 체크아웃
         uses: actions/checkout@v4
 
-      - name: GPU 서버 배포 (Bastion 경유)
-        uses: appleboy/ssh-action@v1.0.3
+      - name: docker-compose.yml 서버로 복사 (Bastion 경유)
+        uses: appleboy/scp-action@v0.1.7
         with:
-          # ── 실제 서버 (laurel) ──
           host: ${{ secrets.SERVER_HOST }}
           port: ${{ secrets.SERVER_PORT }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          proxy_host: ${{ secrets.BASTION_HOST }}
+          proxy_port: ${{ secrets.BASTION_PORT }}
+          proxy_username: ${{ secrets.BASTION_USER }}
+          proxy_key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "docker-compose.yml"
+          target: "~/hdd/"
 
-          # ── Bastion 서버 (almond) ──
+      - name: GPU 서버 배포 (Bastion 경유)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           proxy_host: ${{ secrets.BASTION_HOST }}
           proxy_port: ${{ secrets.BASTION_PORT }}
           proxy_username: ${{ secrets.BASTION_USER }}
           proxy_key: ${{ secrets.SSH_PRIVATE_KEY }}
 
           script: |
-            # model_repository 동기화
             cd ~/hdd
-            git -C capston/AI pull origin main
 
             # Triton 이미지 pull & 재시작
             docker pull nvcr.io/nvidia/tritonserver:24.12-py3
