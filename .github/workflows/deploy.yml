@@ -6,8 +6,59 @@ on:
       - main
 
 jobs:
+  # ── Job 1: Dockerfile 변경 시에만 이미지 빌드 ──────────────────────────
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+
+    steps:
+      - name: 소스코드 체크아웃
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # 직전 커밋과 비교하기 위해 2개 fetch
+
+      - name: Dockerfile 변경 여부 확인
+        id: check
+        run: |
+          if git diff --name-only HEAD~1 HEAD | grep -q 'triton/Dockerfile'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 이미지 이름 설정
+        id: image
+        run: echo "name=${{ secrets.DOCKERHUB_USERNAME }}/tritonserver-gemma:latest" >> $GITHUB_OUTPUT
+
+      - name: Docker Hub 로그인
+        if: steps.check.outputs.changed == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker Buildx 설정
+        if: steps.check.outputs.changed == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: 이미지 빌드 & Docker Hub 푸시
+        if: steps.check.outputs.changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: triton
+          file: triton/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/tritonserver-gemma:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/tritonserver-gemma:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Job 2: 빌드 완료 후 서버 배포 (항상 실행, 빌드 결과 대기) ───────────
   deploy:
     runs-on: ubuntu-latest
+    needs: build   # build job이 끝나야 시작
 
     steps:
       - name: 소스코드 체크아웃
@@ -58,13 +109,9 @@ jobs:
 
             TRITON_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/tritonserver-gemma:latest"
 
-            # 커스텀 이미지 pull
             docker pull "${TRITON_IMAGE}"
-
-            # TRITON_IMAGE를 주입하여 재시작
             TRITON_IMAGE="${TRITON_IMAGE}" docker-compose up -d --force-recreate triton
 
-            # 헬스체크 (최대 120초 대기)
             echo "Triton 기동 대기 중..."
             for i in $(seq 1 24); do
               if curl -sf http://localhost:8000/v2/health/ready; then
