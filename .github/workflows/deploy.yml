@@ -27,6 +27,20 @@ jobs:
           source: "docker-compose.yml"
           target: "~/hdd/"
 
+      - name: model_repository 서버로 복사 (Bastion 경유)
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          proxy_host: ${{ secrets.BASTION_HOST }}
+          proxy_port: ${{ secrets.BASTION_PORT }}
+          proxy_username: ${{ secrets.BASTION_USER }}
+          proxy_key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "triton/model_repository"
+          target: "~/hdd/capston/"   # → ~/hdd/capston/triton/model_repository (MODEL_REPO_PATH와 일치)
+
       - name: GPU 서버 배포 (Bastion 경유)
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -42,9 +56,13 @@ jobs:
           script: |
             cd ~/hdd
 
-            # Triton 이미지 pull & 재시작
-            docker pull nvcr.io/nvidia/tritonserver:24.12-py3
-            docker-compose up -d --force-recreate triton
+            TRITON_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/tritonserver-gemma:latest"
+
+            # 커스텀 이미지 pull
+            docker pull "${TRITON_IMAGE}"
+
+            # TRITON_IMAGE를 주입하여 재시작
+            TRITON_IMAGE="${TRITON_IMAGE}" docker-compose up -d --force-recreate triton
 
             # 헬스체크 (최대 120초 대기)
             echo "Triton 기동 대기 중..."

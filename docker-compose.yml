@@ -1,10 +1,10 @@
 services:
   triton:
-    image: nvcr.io/nvidia/tritonserver:24.12-py3
+    image: ${TRITON_IMAGE}
     ports:
-      - "8000:8000"   # HTTP inference (KServe v2)
-      - "8001:8001"   # gRPC inference
-      - "8002:8002"   # metrics
+      - "8000:8000" # HTTP inference (KServe v2)
+      - "8001:8001" # gRPC inference
+      - "8002:8002" # metrics
     volumes:
       - ${MODEL_REPO_PATH}:/models_repo
       - ${MODEL_PATH}:/models
