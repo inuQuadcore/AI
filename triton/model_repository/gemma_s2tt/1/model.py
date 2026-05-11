@@ -8,7 +8,7 @@ import librosa
 import numpy as np
 import triton_python_backend_utils as pb_utils
 import torch
-from transformers import AutoModelForMultimodalLM, AutoProcessor
+from transformers import AutoModelForCausalLM, AutoProcessor
 
 
 MODEL_ID = "google/gemma-4-E4B-it"
@@ -69,7 +69,7 @@ class TritonPythonModel:
         pb_utils.Logger.log_info(f"Using device map: {self.device_map}")
 
         self.processor = AutoProcessor.from_pretrained(self.model_source)
-        self.model = AutoModelForMultimodalLM.from_pretrained(
+        self.model = AutoModelForCausalLM.from_pretrained(
             self.model_source,
             dtype="auto",
             device_map=self.device_map,

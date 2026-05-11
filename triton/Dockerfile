@@ -4,6 +4,7 @@ FROM nvcr.io/nvidia/tritonserver:23.10-py3
 # torch는 CUDA 12.2 wheel 사용 (드라이버 535.x와 호환)
 RUN pip install --no-cache-dir \
     "torch>=2.1.0" \
+    "torchvision" \
     --extra-index-url https://download.pytorch.org/whl/cu122
 
 RUN pip install --no-cache-dir \
