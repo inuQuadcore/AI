@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir \
     torchvision==0.20.1
 
 RUN pip install --no-cache-dir \
-    "transformers==4.47.0" \
+    "transformers>=4.51.0" \
     "accelerate==1.2.1" \
     "librosa==0.10.2" \
     "soundfile==0.12.1" \
