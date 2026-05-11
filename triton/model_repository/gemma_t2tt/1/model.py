@@ -46,9 +46,11 @@ def _build_prompt(text: str, source_language: str, target_language: str) -> str:
 class TritonPythonModel:
     def initialize(self, args):
         self.model_config = json.loads(args["model_config"])
-        self.device_map = os.environ.get("DEVICE_MAP", "cuda:0")
-        if self.device_map.startswith("cuda") and not torch.cuda.is_available():
+        if not torch.cuda.is_available():
             self.device_map = "cpu"
+        else:
+            gpu_id = args.get("model_instance_device_id", "0")
+            self.device_map = f"cuda:{gpu_id}"
 
         self.model_source = _resolve_model_source()
         pb_utils.Logger.log_info(f"Loading model from: {self.model_source}")
