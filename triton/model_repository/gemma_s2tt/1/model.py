@@ -97,7 +97,7 @@ class TritonPythonModel:
 
                 target_language = _tensor_to_string(target_lang_tensor)
 
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                with tempfile.NamedTemporaryFile(suffix=".audio", delete=False) as tmp:
                     temp_path = Path(tmp.name)
                     tmp.write(audio_bytes)
 
