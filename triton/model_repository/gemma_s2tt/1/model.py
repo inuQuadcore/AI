@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import time
+import traceback
 from pathlib import Path
 
 import librosa
@@ -160,6 +161,8 @@ class TritonPythonModel:
                     temp_path.unlink(missing_ok=True)
 
             except Exception as exc:
+                pb_utils.Logger.log_error(f"gemma_s2tt failed: {exc!r}")
+                pb_utils.Logger.log_error(traceback.format_exc())
                 responses.append(
                     pb_utils.InferenceResponse(
                         output_tensors=[],
