@@ -1,11 +1,11 @@
 import json
 import os
+import subprocess
 import tempfile
 import time
 import traceback
 from pathlib import Path
 
-import librosa
 import numpy as np
 import triton_python_backend_utils as pb_utils
 import torch
@@ -49,6 +49,39 @@ def _clean_response_text(text: str) -> str:
     for marker in ["<turn|>", "<|turn>", "<eos>", "<bos>", "<pad>"]:
         text = text.replace(marker, "")
     return text.strip()
+
+
+def _load_audio_with_ffmpeg(path: Path) -> np.ndarray:
+    """ffmpeg를 직접 호출해 입력 파일을 16kHz mono float32 PCM으로 변환.
+    librosa/audioread 의존 없이 m4a, webm, mp3, wav 등 모든 포맷 처리 가능.
+    """
+    command = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-i", str(path),
+        "-ac", "1",       # mono
+        "-ar", "16000",   # 16kHz
+        "-f", "f32le",    # float32 little-endian PCM
+        "pipe:1",         # stdout으로 출력
+    ]
+    completed = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        stderr_msg = completed.stderr.decode("utf-8", errors="replace")
+        pb_utils.Logger.log_error(f"ffmpeg decode failed: {stderr_msg}")
+        raise RuntimeError(f"ffmpeg failed to decode audio: {stderr_msg}")
+
+    audio = np.frombuffer(completed.stdout, dtype=np.float32)
+    if audio.size == 0:
+        raise ValueError("Decoded audio is empty. 빈 파일이거나 지원하지 않는 코덱입니다.")
+
+    return audio
 
 
 def _tensor_to_string(tensor) -> str:
@@ -103,9 +136,7 @@ class TritonPythonModel:
                     tmp.write(audio_bytes)
 
                 try:
-                    audio_array, _sample_rate = librosa.load(
-                        str(temp_path), sr=16000, mono=True
-                    )
+                    audio_array = _load_audio_with_ffmpeg(temp_path)
 
                     messages = [
                         {
