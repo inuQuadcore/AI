@@ -55,8 +55,6 @@ output [
 ]
 
 instance_group [
-  {
-    kind: KIND_GPU
-    count: 1
-  }
+  { kind: KIND_GPU, count: 1, gpus: [2] }
+  { kind: KIND_GPU, count: 1, gpus: [3] }
 ]

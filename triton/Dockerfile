@@ -1,19 +1,26 @@
-FROM nvcr.io/nvidia/tritonserver:23.10-py3
+FROM nvcr.io/nvidia/tritonserver:24.12-py3
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+ENV PYTHONNOUSERSITE=True
+ENV PIP_NO_CACHE_DIR=1
 
-RUN pip install --no-cache-dir --upgrade pip
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir \
-    --index-url https://download.pytorch.org/whl/cu121 \
-    torch==2.5.1 \
-    torchvision==0.20.1
+# cu118: laurel 서버(드라이버 535.x)에서 검증된 조합
+# torch가 CUDA 11.8 라이브러리를 번들로 포함하므로 베이스 이미지 CUDA 버전 영향 없음
+RUN python3 -m pip install --no-cache-dir \
+    --index-url https://download.pytorch.org/whl/cu118 \
+    torch==2.6.0 \
+    torchvision==0.21.0 \
+    torchaudio==2.6.0
 
-RUN pip install --no-cache-dir \
-    "transformers>=4.51.0" \
-    "accelerate==1.2.1" \
+RUN python3 -m pip install --no-cache-dir \
+    "numpy<2" \
+    "transformers==5.8.1" \
+    "accelerate==1.13.0" \
     "librosa==0.10.2" \
     "soundfile==0.12.1" \
+    "sentencepiece" \
+    "safetensors" \
     "pillow"
