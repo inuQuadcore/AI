@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 import time
@@ -63,7 +64,7 @@ class TritonPythonModel:
                     wf.setsampwidth(2)
                     wf.setframerate(SAMPLE_RATE)
                     wf.writeframes(wav_int16.tobytes())
-                audio_bytes = buf.getvalue()
+                audio_bytes = base64.b64encode(buf.getvalue())
 
                 responses.append(pb_utils.InferenceResponse([
                     pb_utils.Tensor("AUDIO_BYTES",       np.array([audio_bytes], dtype=np.object_)),
