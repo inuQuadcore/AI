@@ -24,3 +24,5 @@ RUN python3 -m pip install --no-cache-dir \
     "sentencepiece" \
     "safetensors" \
     "pillow"
+
+RUN python3 -m pip install --no-cache-dir "supertonic"

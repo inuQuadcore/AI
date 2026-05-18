@@ -1,0 +1,53 @@
+name: "Supertonic_tts"
+backend: "python"
+max_batch_size: 0
+
+input [
+  {
+    name: "TEXT_INPUT"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  },
+  {
+    name: "LANGUAGE"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+    optional: true
+  },
+  {
+    name: "VOICE"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+    optional: true
+  }
+]
+
+output [
+  {
+    name: "AUDIO_BYTES"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  },
+  {
+    name: "AUDIO_FORMAT"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  },
+  {
+    name: "SAMPLE_RATE"
+    data_type: TYPE_INT32
+    dims: [ 1 ]
+  },
+  {
+    name: "INFERENCE_SECONDS"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+  }
+]
+
+instance_group [
+  {
+    kind: KIND_CPU
+    count: 1
+  }
+]
