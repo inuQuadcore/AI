@@ -2,9 +2,9 @@ import io
 import json
 import time
 import traceback
+import wave
 
 import numpy as np
-import soundfile as sf
 import triton_python_backend_utils as pb_utils
 
 SAMPLE_RATE = 44100
@@ -29,9 +29,10 @@ class TritonPythonModel:
         pb_utils.Logger.log_info("Supertonic TTS model loaded.")
 
     def _get_voice_style(self, voice_name: str):
-        if voice_name not in self._voice_cache:
-            self._voice_cache[voice_name] = self.tts.get_voice_style(voice_name=voice_name)
-        return self._voice_cache[voice_name]
+        key = voice_name.upper()
+        if key not in self._voice_cache:
+            self._voice_cache[key] = self.tts.get_voice_style(voice_name=key)
+        return self._voice_cache[key]
 
     def execute(self, requests):
         responses = []
@@ -55,8 +56,13 @@ class TritonPythonModel:
                 wav, _ = self.tts.synthesize(text=text, lang=lang, voice_style=style)
                 elapsed = time.perf_counter() - started_at
 
+                wav_int16 = (np.clip(wav, -1.0, 1.0) * 32767).astype(np.int16)
                 buf = io.BytesIO()
-                sf.write(buf, wav, SAMPLE_RATE, format="WAV", subtype="PCM_16")
+                with wave.open(buf, "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(SAMPLE_RATE)
+                    wf.writeframes(wav_int16.tobytes())
                 audio_bytes = buf.getvalue()
 
                 responses.append(pb_utils.InferenceResponse([
