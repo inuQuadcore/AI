@@ -1,7 +1,7 @@
 # Everybuddy AI — Triton Inference Server
 
-채팅 앱의 번역 기능을 담당하는 AI 추론 서버입니다.  
-NVIDIA Triton Inference Server 위에서 **T2TT(텍스트 번역)** 와 **S2TT(음성 번역)** 를 제공합니다.
+채팅 앱의 번역 및 음성 합성 기능을 담당하는 AI 추론 서버입니다.  
+NVIDIA Triton Inference Server 위에서 **T2TT(텍스트 번역)**, **S2TT(음성 번역)**, **TTS(음성 합성)** 를 제공합니다.
 
 ---
 
@@ -35,21 +35,26 @@ AI/
         ├── gemma_t2tt/
         │   ├── config.pbtxt              # 모델 I/O 스펙 (Triton 설정)
         │   └── 1/model.py               # 텍스트 번역 추론 로직
-        └── gemma_s2tt/
+        ├── gemma_s2tt/
+        │   ├── config.pbtxt
+        │   └── 1/model.py               # 음성 번역 추론 로직
+        └── Supertonic_tts/
             ├── config.pbtxt
-            └── 1/model.py               # 음성 번역 추론 로직
+            └── 1/model.py               # TTS 추론 로직 (Supertonic)
 ```
 
 ---
 
 ## 모델
 
-| 모델 | 입력 | 출력 | 할당 GPU |
+| 모델 | 입력 | 출력 | 할당 리소스 |
 |---|---|---|---|
 | `gemma_s2tt` | 오디오 파일 bytes, 목표 언어 | ASR 결과, 감지 언어, 번역 결과 | GPU 0, 1 |
 | `gemma_t2tt` | 텍스트, 원본 언어, 목표 언어 | 번역 결과 | GPU 2, 3 |
+| `Supertonic_tts` | 텍스트, 언어, 화자 | 오디오 bytes (WAV, base64) | CPU |
 
-기반 모델: `google/gemma-4-E4B-it` (멀티모달 · 4B 파라미터)
+번역 기반 모델: `google/gemma-4-E4B-it` (멀티모달 · 4B 파라미터)  
+TTS 모델: `Supertonic` (ONNX, 31개 언어, ~99M 파라미터)
 
 ### GPU 구성
 
@@ -61,6 +66,7 @@ GPU 0 │ gemma_s2tt instance 0  ├─ ~16GB / 32GB (~50%)
 GPU 1 │ gemma_s2tt instance 1  ├─ ~16GB / 32GB (~50%)
 GPU 2 │ gemma_t2tt instance 0  ├─ ~16GB / 32GB (~50%)
 GPU 3 │ gemma_t2tt instance 1  └─ ~16GB / 32GB (~50%)
+      │ Supertonic_tts          └─ CPU 전용 (GPU 미사용)
 ```
 
 ---
@@ -79,6 +85,8 @@ GPU 3 │ gemma_t2tt instance 1  └─ ~16GB / 32GB (~50%)
 
 **출력:** `SOURCE_TEXT` · `SOURCE_LANGUAGE` · `TRANSLATED_TEXT` · `TARGET_LANGUAGE` · `RAW_RESPONSE` · `INFERENCE_SECONDS`
 
+---
+
 ### S2TT (음성 번역)
 
 **엔드포인트:** `POST /v2/models/gemma_s2tt/infer`
@@ -93,6 +101,48 @@ GPU 3 │ gemma_t2tt instance 1  └─ ~16GB / 32GB (~50%)
 > ⚠️ **백엔드 연동 주의**  
 > `AUDIO_BYTES`는 반드시 **raw bytes** 를 Triton binary HTTP extension으로 전송해야 합니다.  
 > JSON 프로토콜은 BYTES를 base64로 인코딩하므로, ffmpeg가 오디오로 인식하지 못해 오류가 발생합니다.
+
+---
+
+### TTS (음성 합성)
+
+**엔드포인트:** `POST /v2/models/Supertonic_tts/infer`
+
+| 이름 | 타입 | 필수 | 기본값 | 설명 |
+|---|---|---|---|---|
+| `TEXT_INPUT` | BYTES | ✓ | — | 합성할 텍스트 (최대 500자 권장) |
+| `LANGUAGE` | BYTES | | `ko` | 언어 코드 (`ko`, `en`, `ja`, `zh` 등 31개 언어) |
+| `VOICE` | BYTES | | `M1` | 화자 (`M1`~`M5`, `F1`~`F5`) |
+
+**출력:**
+
+| 이름 | 타입 | 설명 |
+|---|---|---|
+| `AUDIO_BYTES` | BYTES | **base64 인코딩된** WAV 오디오 (PCM 16-bit, 44.1kHz) |
+| `AUDIO_FORMAT` | BYTES | `"wav"` |
+| `SAMPLE_RATE` | INT32 | `44100` |
+| `INFERENCE_SECONDS` | FP32 | 추론 소요 시간 |
+
+> **백엔드 연동 안내**  
+> `AUDIO_BYTES`는 JSON 안전 전송을 위해 **base64 인코딩**되어 반환됩니다.  
+> 응답의 `data[0]` 값을 base64 디코딩하면 재생 가능한 WAV 바이너리입니다.
+> ```java
+> byte[] audioBytes = Base64.getDecoder().decode(response.getOutputData("AUDIO_BYTES"));
+> ```
+
+```bash
+# TTS 동작 테스트
+curl -s -X POST http://localhost:8000/v2/models/Supertonic_tts/infer \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputs": [
+      {"name": "TEXT_INPUT", "shape": [1], "datatype": "BYTES", "data": ["안녕하세요"]},
+      {"name": "LANGUAGE",   "shape": [1], "datatype": "BYTES", "data": ["ko"]},
+      {"name": "VOICE",      "shape": [1], "datatype": "BYTES", "data": ["M1"]}
+    ],
+    "outputs": [{"name": "AUDIO_BYTES"}]
+  }'
+```
 
 ---
 
@@ -140,6 +190,7 @@ PyTorch:       2.6.0+cu118  ← laurel 서버 드라이버 535.x 검증값
                cu118 wheel을 사용하면 드라이버 호환성 범위가 넓어집니다
 오디오:        ffmpeg (apt), soundfile, librosa
 모델 로딩:     transformers 5.8.1, accelerate 1.13.0, sentencepiece, safetensors
+TTS:           supertonic (ONNX 기반, HuggingFace에서 첫 실행 시 자동 다운로드)
 ```
 
 Dockerfile 변경 시 main push → GitHub Actions가 자동으로 이미지를 빌드해 Docker Hub에 push합니다.
@@ -176,13 +227,15 @@ push to main
     ├── triton/
     │   └── model_repository/   ← MODEL_REPO_PATH (CI/CD가 자동 복사)
     │       ├── gemma_t2tt/
-    │       └── gemma_s2tt/
+    │       ├── gemma_s2tt/
+    │       └── Supertonic_tts/
     └── models/
         └── gemma-4-E4B-it/     ← MODEL_PATH (HuggingFace에서 별도 다운로드)
 ```
 
 > 모델 가중치 파일(`gemma-4-E4B-it/`)은 git 미포함입니다.  
-> 서버에 없다면 HuggingFace에서 직접 다운로드해야 합니다.
+> 서버에 없다면 HuggingFace에서 직접 다운로드해야 합니다.  
+> Supertonic 모델은 컨테이너 최초 실행 시 HuggingFace에서 자동 다운로드됩니다.
 
 ---
 
@@ -197,6 +250,7 @@ curl http://localhost:8000/v2/health/ready
 # 모델별 ready
 curl http://localhost:8000/v2/models/gemma_t2tt/ready
 curl http://localhost:8000/v2/models/gemma_s2tt/ready
+curl http://localhost:8000/v2/models/Supertonic_tts/ready
 
 # 로드된 모델 목록
 curl http://localhost:8000/v2/repository/index
@@ -229,6 +283,28 @@ python triton/client/infer_s2tt.py \
   --target-lang korean
 ```
 
+### TTS 동작 테스트
+
+```bash
+# 응답에서 AUDIO_BYTES(base64) 추출 후 디코딩
+curl -s -X POST http://localhost:8000/v2/models/Supertonic_tts/infer \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputs": [
+      {"name": "TEXT_INPUT", "shape": [1], "datatype": "BYTES", "data": ["안녕하세요"]},
+      {"name": "LANGUAGE",   "shape": [1], "datatype": "BYTES", "data": ["ko"]},
+      {"name": "VOICE",      "shape": [1], "datatype": "BYTES", "data": ["M1"]}
+    ],
+    "outputs": [{"name": "AUDIO_BYTES"}]
+  }' | python3 -c "
+import sys, json, base64
+r = json.load(sys.stdin)
+audio = r['outputs'][0]['data'][0]
+open('output.wav','wb').write(base64.b64decode(audio))
+print('output.wav 저장 완료')
+"
+```
+
 ### 로그 확인
 
 ```bash
@@ -253,6 +329,7 @@ watch -n 1 nvidia-smi
 | 모델 UNAVAILABLE | `docker logs triton \| grep UNAVAILABLE` | 모델 파일 없음 |
 | config.pbtxt 파싱 오류 | `docker logs triton \| grep "failed to read"` | protobuf 문법 오류 |
 | S2TT ffmpeg 오류 | `docker logs triton \| grep ffmpeg` | 오디오 bytes 전송 방식 오류 (raw bytes 필요) |
+| TTS 모델 다운로드 실패 | `docker logs triton \| grep Supertonic` | laurel 서버 → HuggingFace 네트워크 차단 여부 확인 |
 | GPU 미인식 | `docker exec triton nvidia-smi` | NVIDIA Container Toolkit 문제 |
 | 드라이버 경고 | 로그 상단 Driver Release 경고 | 무시 가능 (cu118 wheel로 호환성 확보됨) |
 
