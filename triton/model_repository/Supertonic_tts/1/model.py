@@ -9,8 +9,24 @@ import numpy as np
 import triton_python_backend_utils as pb_utils
 
 SAMPLE_RATE = 44100
-DEFAULT_LANG = "ko"
+DEFAULT_LANG = "ko"  # langdetect 실패 시 최종 폴백
 DEFAULT_VOICE = "M1"
+
+try:
+    from langdetect import detect as _detect_lang
+    from langdetect.lang_detect_exception import LangDetectException
+    _LANGDETECT_AVAILABLE = True
+except ImportError:
+    _LANGDETECT_AVAILABLE = False
+
+
+def _detect_language(text: str) -> str:
+    if not _LANGDETECT_AVAILABLE:
+        return DEFAULT_LANG
+    try:
+        return _detect_lang(text)
+    except LangDetectException:
+        return DEFAULT_LANG
 
 
 def _tensor_to_string(tensor) -> str:
@@ -46,7 +62,10 @@ class TritonPythonModel:
                 text = _tensor_to_string(text_tensor)
 
                 lang_tensor = pb_utils.get_input_tensor_by_name(request, "LANGUAGE")
-                lang = _tensor_to_string(lang_tensor) if lang_tensor is not None else DEFAULT_LANG
+                if lang_tensor is not None:
+                    lang = _tensor_to_string(lang_tensor)
+                else:
+                    lang = _detect_language(text)
 
                 voice_tensor = pb_utils.get_input_tensor_by_name(request, "VOICE")
                 voice_name = _tensor_to_string(voice_tensor) if voice_tensor is not None else DEFAULT_VOICE
