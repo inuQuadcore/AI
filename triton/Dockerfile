@@ -23,6 +23,7 @@ RUN python3 -m pip install --no-cache-dir \
     "soundfile==0.12.1" \
     "sentencepiece" \
     "safetensors" \
-    "pillow"
-
-RUN python3 -m pip install --no-cache-dir "supertonic"
+    "pillow" \
+    "supertonic" \
+    "langdetect" \
+    "silero-vad"
