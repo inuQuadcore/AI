@@ -53,10 +53,14 @@ def _clean_response_text(text: str) -> str:
 
 
 def _load_audio_with_ffmpeg(path: Path) -> np.ndarray:
+    file_size = path.stat().st_size
+    pb_utils.Logger.log_info(f"ffmpeg decoding: {path} (size={file_size} bytes)")
+
     command = [
         "ffmpeg",
         "-hide_banner",
         "-loglevel", "error",
+        "-ignore_length", "1",  # Spring pipe 출력 WAV의 data chunk size=0x7FFFFFFF 대응
         "-i", str(path),
         "-ac", "1",
         "-ar", str(SAMPLE_RATE),
@@ -79,6 +83,7 @@ def _load_audio_with_ffmpeg(path: Path) -> np.ndarray:
     if audio.size == 0:
         raise ValueError("Decoded audio is empty. 빈 파일이거나 지원하지 않는 코덱입니다.")
 
+    pb_utils.Logger.log_info(f"ffmpeg decoded {audio.size} samples ({audio.size / SAMPLE_RATE:.2f}s)")
     return audio
 
 
@@ -256,6 +261,9 @@ class TritonPythonModel:
                     audio_bytes = bytes(audio_bytes)
                 elif isinstance(audio_bytes, str):
                     audio_bytes = audio_bytes.encode("utf-8")
+
+                if len(audio_bytes) == 0:
+                    raise ValueError("AUDIO_BYTES가 비어 있습니다. Spring ffmpeg 변환 결과를 확인하세요.")
 
                 target_language = _tensor_to_string(target_lang_tensor)
 
