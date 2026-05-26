@@ -27,11 +27,12 @@ def _resolve_model_source() -> str:
 
 def _build_prompt(target_language: str) -> str:
     return (
-        "Transcribe the audio in the original language and translate it. "
+        f"Transcribe the audio in the original language, then translate it into {target_language}. "
+        f"The translation MUST be in {target_language} only. Do not translate into any other language.\n"
         "Return exactly this format:\n"
         "ASR: <original-language transcription>\n"
         "DETECTED_SOURCE_LANGUAGE: <detected source language>\n"
-        "TRANSLATION: <translated text>\n"
+        f"TRANSLATION: <{target_language} translation>\n"
         f"Target language: {target_language}"
     )
 
