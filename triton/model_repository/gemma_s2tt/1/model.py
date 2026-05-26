@@ -60,7 +60,6 @@ def _load_audio_with_ffmpeg(path: Path) -> np.ndarray:
         "ffmpeg",
         "-hide_banner",
         "-loglevel", "error",
-        "-ignore_length", "1",  # Spring pipe 출력 WAV의 data chunk size=0x7FFFFFFF 대응
         "-i", str(path),
         "-ac", "1",
         "-ar", str(SAMPLE_RATE),
