@@ -65,10 +65,5 @@ instance_group [
     kind: KIND_GPU
     count: 1
     gpus: [0]
-  },
-  {
-    kind: KIND_GPU
-    count: 1
-    gpus: [1]
   }
 ]
