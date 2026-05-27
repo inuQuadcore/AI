@@ -1,10 +1,6 @@
-name: "gemma_s2tt_stream"
+name: "gemma_v2tt"
 backend: "python"
 max_batch_size: 0
-
-model_transaction_policy {
-  decoupled: true
-}
 
 input [
   {
@@ -21,7 +17,7 @@ input [
 
 output [
   {
-    name: "SEGMENT_JSON"
+    name: "SEGMENTS_JSON"
     data_type: TYPE_STRING
     dims: [ 1 ]
   }

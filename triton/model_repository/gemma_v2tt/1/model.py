@@ -57,7 +57,7 @@ def _clean_response_text(text: str) -> str:
 
 def _load_audio_with_ffmpeg(path: Path) -> np.ndarray:
     file_size = path.stat().st_size
-    pb_utils.Logger.log_info(f"[stream] ffmpeg decoding: {path} (size={file_size} bytes)")
+    pb_utils.Logger.log_info(f"[v2tt] ffmpeg decoding: {path} (size={file_size} bytes)")
 
     command = [
         "ffmpeg",
@@ -78,14 +78,14 @@ def _load_audio_with_ffmpeg(path: Path) -> np.ndarray:
     )
     if completed.returncode != 0:
         stderr_msg = completed.stderr.decode("utf-8", errors="replace")
-        pb_utils.Logger.log_error(f"[stream] ffmpeg decode failed: {stderr_msg}")
+        pb_utils.Logger.log_error(f"[v2tt] ffmpeg decode failed: {stderr_msg}")
         raise RuntimeError(f"ffmpeg failed to decode audio: {stderr_msg}")
 
     audio = np.frombuffer(completed.stdout, dtype=np.float32)
     if audio.size == 0:
         raise ValueError("Decoded audio is empty. 빈 파일이거나 지원하지 않는 코덱입니다.")
 
-    pb_utils.Logger.log_info(f"[stream] ffmpeg decoded {audio.size} samples ({audio.size / SAMPLE_RATE:.2f}s)")
+    pb_utils.Logger.log_info(f"[v2tt] ffmpeg decoded {audio.size} samples ({audio.size / SAMPLE_RATE:.2f}s)")
     return audio
 
 
@@ -113,8 +113,8 @@ class TritonPythonModel:
             self.device_map = f"cuda:{gpu_id}"
 
         self.model_source = _resolve_model_source()
-        pb_utils.Logger.log_info(f"[stream] Loading model from: {self.model_source}")
-        pb_utils.Logger.log_info(f"[stream] Using device map: {self.device_map}")
+        pb_utils.Logger.log_info(f"[v2tt] Loading model from: {self.model_source}")
+        pb_utils.Logger.log_info(f"[v2tt] Using device map: {self.device_map}")
 
         self.processor = AutoProcessor.from_pretrained(self.model_source)
         self.model = AutoModelForCausalLM.from_pretrained(
@@ -127,10 +127,10 @@ class TritonPythonModel:
         try:
             from silero_vad import load_silero_vad
             self.vad_model = load_silero_vad()
-            pb_utils.Logger.log_info("[stream] SileroVAD loaded successfully.")
+            pb_utils.Logger.log_info("[v2tt] SileroVAD loaded successfully.")
         except Exception as exc:
             self.vad_model = None
-            pb_utils.Logger.log_warning(f"[stream] SileroVAD load failed: {exc}")
+            pb_utils.Logger.log_warning(f"[v2tt] SileroVAD load failed: {exc}")
 
     def _run_gemma(self, audio_array: np.ndarray, target_language: str):
         messages = [
@@ -176,9 +176,9 @@ class TritonPythonModel:
         )
 
     def execute(self, requests):
-        for request in requests:
-            response_sender = request.get_response_sender()
+        responses = []
 
+        for request in requests:
             try:
                 audio_tensor       = pb_utils.get_input_tensor_by_name(request, "AUDIO_BYTES")
                 target_lang_tensor = pb_utils.get_input_tensor_by_name(request, "TARGET_LANGUAGE")
@@ -197,7 +197,7 @@ class TritonPythonModel:
 
                 target_language = _tensor_to_string(target_lang_tensor)
 
-                with tempfile.NamedTemporaryFile(suffix=".audio", delete=False) as tmp:
+                with tempfile.NamedTemporaryFile(suffix=".video", delete=False) as tmp:
                     temp_path = Path(tmp.name)
                     tmp.write(audio_bytes)
 
@@ -219,11 +219,12 @@ class TritonPythonModel:
                 )
 
                 total_segments = len(speech_timestamps)
-                pb_utils.Logger.log_info(f"[stream] VAD detected {total_segments} segments")
+                pb_utils.Logger.log_info(f"[v2tt] VAD detected {total_segments} segments")
+
+                segments = []
 
                 if total_segments == 0:
-                    # 음성 구간 없음 → 빈 세그먼트로 완료
-                    empty_segment = json.dumps({
+                    segments.append({
                         "index": 0,
                         "total_segments": 0,
                         "start_seconds": 0.0,
@@ -233,71 +234,54 @@ class TritonPythonModel:
                         "source_language": "",
                         "translated_text": "",
                         "inference_seconds": 0.0,
-                        "is_final": True,
-                    }, ensure_ascii=False)
-                    response_sender.send(
-                        pb_utils.InferenceResponse([
-                            pb_utils.Tensor("SEGMENT_JSON",
-                                np.array([empty_segment.encode("utf-8")], dtype=np.object_)),
-                        ]),
-                        flags=pb_utils.TRITONSERVER_RESPONSE_COMPLETE_FINAL,
-                    )
-                    continue
+                    })
+                else:
+                    for idx, ts in enumerate(speech_timestamps):
+                        start_s = ts["start"]
+                        end_s   = ts["end"]
 
-                # 구간마다 추론 후 즉시 전송
-                for idx, ts in enumerate(speech_timestamps):
-                    start_s = ts["start"]
-                    end_s   = ts["end"]
-                    is_last = (idx == total_segments - 1)
+                        segment_audio = audio_array[int(start_s * SAMPLE_RATE):int(end_s * SAMPLE_RATE)]
+                        src_text, src_lang, trans_text, elapsed = self._run_gemma(segment_audio, target_language)
 
-                    segment_audio = audio_array[int(start_s * SAMPLE_RATE):int(end_s * SAMPLE_RATE)]
-                    src_text, src_lang, trans_text, elapsed = self._run_gemma(segment_audio, target_language)
+                        pb_utils.Logger.log_info(
+                            f"[v2tt] Processed segment {idx+1}/{total_segments} "
+                            f"({start_s:.1f}s~{end_s:.1f}s)"
+                        )
 
-                    segment = json.dumps({
-                        "index": idx + 1,
-                        "total_segments": total_segments,
-                        "start_seconds": round(start_s, 3),
-                        "end_seconds": round(end_s, 3),
-                        "timestamp": f"{_fmt_timestamp(start_s)} --> {_fmt_timestamp(end_s)}",
-                        "source_text": src_text,
-                        "source_language": src_lang,
-                        "translated_text": trans_text,
-                        "inference_seconds": round(elapsed, 3),
-                        "is_final": is_last,
-                    }, ensure_ascii=False)
+                        segments.append({
+                            "index": idx + 1,
+                            "total_segments": total_segments,
+                            "start_seconds": round(start_s, 3),
+                            "end_seconds": round(end_s, 3),
+                            "timestamp": f"{_fmt_timestamp(start_s)} --> {_fmt_timestamp(end_s)}",
+                            "source_text": src_text,
+                            "source_language": src_lang,
+                            "translated_text": trans_text,
+                            "inference_seconds": round(elapsed, 3),
+                        })
 
-                    pb_utils.Logger.log_info(
-                        f"[stream] Sending segment {idx+1}/{total_segments} "
-                        f"({start_s:.1f}s~{end_s:.1f}s)"
-                    )
-
-                    flags = pb_utils.TRITONSERVER_RESPONSE_COMPLETE_FINAL if is_last else 0
-                    response_sender.send(
-                        pb_utils.InferenceResponse([
-                            pb_utils.Tensor("SEGMENT_JSON",
-                                np.array([segment.encode("utf-8")], dtype=np.object_)),
-                        ]),
-                        flags=flags,
-                    )
+                segments_json = json.dumps(segments, ensure_ascii=False)
+                responses.append(pb_utils.InferenceResponse([
+                    pb_utils.Tensor(
+                        "SEGMENTS_JSON",
+                        np.array([segments_json.encode("utf-8")], dtype=np.object_),
+                    ),
+                ]))
 
             except Exception as exc:
-                pb_utils.Logger.log_error(f"[stream] gemma_s2tt_stream failed: {exc!r}")
+                pb_utils.Logger.log_error(f"[v2tt] gemma_v2tt failed: {exc!r}")
                 pb_utils.Logger.log_error(traceback.format_exc())
+                responses.append(pb_utils.InferenceResponse(
+                    output_tensors=[
+                        pb_utils.Tensor(
+                            "SEGMENTS_JSON",
+                            np.array([json.dumps({"error": str(exc)}).encode("utf-8")], dtype=np.object_),
+                        ),
+                    ],
+                    error=pb_utils.TritonError(str(exc)),
+                ))
 
-                error_segment = json.dumps({
-                    "error": str(exc),
-                    "is_final": True,
-                }, ensure_ascii=False)
-                response_sender.send(
-                    pb_utils.InferenceResponse(
-                        output_tensors=[
-                            pb_utils.Tensor("SEGMENT_JSON",
-                                np.array([error_segment.encode("utf-8")], dtype=np.object_)),
-                        ],
-                        error=pb_utils.TritonError(str(exc)),
-                    ),
-                    flags=pb_utils.TRITONSERVER_RESPONSE_COMPLETE_FINAL,
-                )
+        return responses
 
     def finalize(self):
-        pb_utils.Logger.log_info("[stream] Cleaning up gemma_s2tt_stream model.")
+        pb_utils.Logger.log_info("[v2tt] Cleaning up gemma_v2tt model.")
