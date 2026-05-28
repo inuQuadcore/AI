@@ -85,7 +85,21 @@ def _load_audio_with_ffmpeg(path: Path) -> np.ndarray:
     if audio.size == 0:
         raise ValueError("Decoded audio is empty. 빈 파일이거나 지원하지 않는 코덱입니다.")
 
-    pb_utils.Logger.log_info(f"[v2tt] ffmpeg decoded {audio.size} samples ({audio.size / SAMPLE_RATE:.2f}s)")
+    duration = audio.size / SAMPLE_RATE
+    max_amp   = float(audio.max())
+    mean_amp  = float(np.abs(audio).mean())
+    silence_ratio = float(np.mean(np.abs(audio) < 0.01))
+
+    pb_utils.Logger.log_info(
+        f"[v2tt] ffmpeg decoded {audio.size} samples ({duration:.2f}s) | "
+        f"max={max_amp:.4f} mean={mean_amp:.4f} silence={silence_ratio:.1%}"
+    )
+
+    if max_amp < 0.05:
+        pb_utils.Logger.log_warning(f"[v2tt] Audio volume is very low (max={max_amp:.4f}). 인식 품질이 낮을 수 있습니다.")
+    if silence_ratio > 0.80:
+        pb_utils.Logger.log_warning(f"[v2tt] Silence ratio is high ({silence_ratio:.1%}). 음성이 거의 없는 구간입니다.")
+
     return audio
 
 
@@ -216,6 +230,8 @@ class TritonPythonModel:
                     self.vad_model,
                     sampling_rate=SAMPLE_RATE,
                     return_seconds=True,
+                    min_speech_duration_ms=1500,
+                    min_silence_duration_ms=500,
                 )
 
                 total_segments = len(speech_timestamps)
