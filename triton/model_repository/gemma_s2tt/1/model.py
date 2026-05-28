@@ -164,7 +164,7 @@ class TritonPythonModel:
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=128,
-                do_sample=False,
+                do_sample=True,
             )
         if self.model.device.type == "cuda":
             torch.cuda.synchronize(self.model.device)
