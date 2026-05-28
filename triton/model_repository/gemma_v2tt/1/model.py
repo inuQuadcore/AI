@@ -25,7 +25,21 @@ def _resolve_model_source() -> str:
     return os.environ.get("MODEL_ID", MODEL_ID)
 
 
-def _build_prompt(target_language: str) -> str:
+def _build_prompt(target_language: str, source_language: str = None) -> str:
+    if source_language:
+        return (
+            f"The audio is in {source_language}. "
+            f"Transcribe it in {source_language} exactly as spoken. "
+            f"Then translate its MEANING into {target_language}. "
+            f"The TRANSLATION field MUST be a natural, fluent {target_language} translation of the meaning. "
+            f"Do NOT transliterate or write foreign sounds in {target_language} characters. "
+            f"Translate what the words mean, not how they sound.\n"
+            "Return exactly this format:\n"
+            f"ASR: <{source_language} transcription>\n"
+            f"DETECTED_SOURCE_LANGUAGE: {source_language}\n"
+            f"TRANSLATION: <natural {target_language} translation of the meaning>\n"
+            f"Target language: {target_language}"
+        )
     return (
         f"Transcribe the audio in the original language, then translate its MEANING into {target_language}. "
         f"The TRANSLATION field MUST be a natural, fluent {target_language} translation of the meaning. "
@@ -146,13 +160,13 @@ class TritonPythonModel:
             self.vad_model = None
             pb_utils.Logger.log_warning(f"[v2tt] SileroVAD load failed: {exc}")
 
-    def _run_gemma(self, audio_array: np.ndarray, target_language: str):
+    def _run_gemma(self, audio_array: np.ndarray, target_language: str, source_language: str = None):
         messages = [
             {
                 "role": "user",
                 "content": [
                     {"type": "audio", "audio": audio_array},
-                    {"type": "text",  "text": _build_prompt(target_language)},
+                    {"type": "text",  "text": _build_prompt(target_language, source_language)},
                 ],
             }
         ]
@@ -252,16 +266,27 @@ class TritonPythonModel:
                         "inference_seconds": 0.0,
                     })
                 else:
+                    locked_source_language = None
+
                     for idx, ts in enumerate(speech_timestamps):
                         start_s = ts["start"]
                         end_s   = ts["end"]
 
                         segment_audio = audio_array[int(start_s * SAMPLE_RATE):int(end_s * SAMPLE_RATE)]
-                        src_text, src_lang, trans_text, elapsed = self._run_gemma(segment_audio, target_language)
+                        src_text, src_lang, trans_text, elapsed = self._run_gemma(
+                            segment_audio, target_language, locked_source_language
+                        )
+
+                        # 첫 번째 청크에서 감지된 언어로 고정
+                        if idx == 0 and src_lang:
+                            locked_source_language = src_lang
+                            pb_utils.Logger.log_info(
+                                f"[v2tt] Source language locked: {locked_source_language}"
+                            )
 
                         pb_utils.Logger.log_info(
                             f"[v2tt] Processed segment {idx+1}/{total_segments} "
-                            f"({start_s:.1f}s~{end_s:.1f}s)"
+                            f"({start_s:.1f}s~{end_s:.1f}s) lang={src_lang}"
                         )
 
                         segments.append({
